@@ -1,0 +1,26 @@
+#!/usr/bin/env perl
+
+$_ = `git status 2>/dev/null`;
+
+our($branch) = m{On branch ([\w-]+)}i;
+
+do { print ''; exit } unless $branch;
+
+print "[$branch]";
+
+our $modified = m{not staged for commit};
+if( $modified ){
+  exit 1; # red
+}
+
+our $untracked = m{Untracked};
+if( $untracked){
+  exit 2; # yellow
+}
+
+our $modified = m{Changes to be committed};
+if( $modified ){
+  exit 3; # white
+}
+
+exit 0; # green

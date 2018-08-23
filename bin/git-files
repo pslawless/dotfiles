@@ -1,0 +1,107 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+    git-files - print the list of files associated with a commit or current status
+
+=head1 SYNOPSIS
+
+    git-files [commit]
+
+     Options:
+       --cached|staged  Print only the files that have been "git add"ed.
+       --modified_only  Print only files that have been modified, not added or deleted.
+       --oneline        Print files separated by spaces instead of newlines.
+=cut
+
+
+use warnings;
+use strict;
+
+use Getopt::Long;
+use Pod::Usage qw/pod2usage/;
+
+our($modified_only, $oneline, $staged_only);
+our $REPO_ROOT = execute_and_chomp('git rev-parse --show-toplevel');
+our $CURRENT_DIR = execute_and_chomp('pwd');
+our $REPO_DIR_DIFF = path_subtract($CURRENT_DIR, $REPO_ROOT);
+
+GetOptions(
+           'help|?'        => sub { pod2usage() },
+           'modified_only' => \$modified_only,
+           'oneline'       => \$oneline,
+           'staged|cached' => \$staged_only,
+);
+
+my $commit = shift;
+
+if($commit){
+    do_git_show($commit);
+}
+else {
+    do_git_status(modified_only => $modified_only, staged_only => $staged_only);
+}
+
+
+sub do_git_status {
+    my $files_in_modified_state = 0;
+
+    open PROC_OUT, "git status --short |" or die "Couldn't deal with 'git status': $!";
+    while( <PROC_OUT> ){
+        $files_in_modified_state = 1;
+        my($x, $y, $filename) = m{^(.)(.)\s*(\S+)$};
+
+        my $staged = $x ne ' ' && $x ne 'U';
+        my $modified = $x eq 'M' || $y eq 'M';
+        my $added = $x eq 'A' || $y eq 'A';
+        my $deleted = $x eq 'D' || $y eq 'D';
+        my $unmerged = $x eq 'U' && $y eq 'U';
+
+        next if $modified_only and not $modified;
+        next if $staged_only and not $staged;
+        next if $staged and not $staged_only;
+
+        print $filename;
+
+        print ' ' if $oneline;
+        print "\n" unless $oneline;
+    }
+
+    if( not $files_in_modified_state ){
+        do_git_show();
+    }
+    elsif( $oneline ){
+        print "\n";
+    }
+}
+
+sub do_git_show {
+    my $commit = shift || 'HEAD';
+    my $command = 'git show --pretty="format:" --name-only';
+
+    my $output = `$command $commit`;
+    my @output = map {s{^$REPO_DIR_DIFF/?}{}; $_} split /\n/, $output;
+
+    if($oneline){
+        print "@output\n";
+    }
+    else {
+        print join("\n", @output), "\n";
+    }
+}
+
+sub path_subtract {
+    my($minuend, $subtrahend) = @_;
+
+    $minuend =~ s{^$subtrahend/?}{};
+    return $minuend;
+}
+
+sub execute_and_chomp {
+    my $exec = shift;
+
+    my $output = `$exec`;
+    chomp $output;
+
+    return $output;
+}

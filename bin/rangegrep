@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use Getopt::Long;
+use File::Find;
+
+my($recursive);
+
+GetOptions(
+           'recursive' => \$recursive,
+);
+
+my $start_regex = shift;
+my $end_regex = shift;
+
+unless( $start_regex and $end_regex and @ARGV ) {
+    print STDERR "Usage: $0 [--recursive] <start_regex> <end_regex> <filename|dirname>";
+    exit 1;
+}
+
+if( not $recursive ) {
+    my $filecount = @ARGV;
+
+    foreach my $filename (@ARGV) {
+        $, = "$filename: " if $filecount > 1;
+        my $matches = grep_in_file($filename);
+        print_results($matches, $filename) if @ARGV > 1;
+        print_results($matches) if @ARGV == 1;
+    }
+    exit;
+}
+
+foreach my $filename (@ARGV) {
+    if( -T $filename) {
+        $, = "$filename: ";
+        my $matches = grep_in_file($filename);
+        print_results($matches, $filename);
+    }
+    elsif( -d _ ) {
+        find(\&wanted, $filename);
+    }
+}
+
+############ END OF MAIN ################
+
+sub print_results {
+    my $results = shift;
+    my $filename = shift;
+
+    return unless $results;
+
+    print '-' x 10, 'START OF ', $filename, '-' x 10, "\n" if $filename;
+    print join("-----------\n", map {"@$_"} @$results);
+    print '-' x 10, 'END OF ', $filename, '-' x 10, "\n" if $filename;
+}
+
+sub wanted {
+    return unless -T $_;
+
+    $, = "$File::Find::name: ";
+    my $matches = grep_in_file($_);
+    print_results($matches, $File::Find::name);
+}
+
+sub grep_in_file {
+    my $filename = shift;
+    local $_;
+
+    open my $fh, '<', $filename or do { print STDERR "Cannot open $filename for reading: $!\n"; return; };
+
+    my $matched_records;
+    my $matched_lines = [];
+    my $in_match;
+    while(<$fh>) {
+        if($in_match) {
+            push @$matched_lines, $_;
+            if(m{$end_regex}) {
+                $in_match = 0;
+                push @$matched_records, $matched_lines;
+                $matched_lines = [];
+            }
+        }
+        elsif(m{$start_regex}) {
+            print "Found $start_regex: $_\n";
+            push @$matched_lines, $_;
+            $in_match = 1;
+        }
+    }
+
+    close $fh;
+
+    return $matched_records;
+}
